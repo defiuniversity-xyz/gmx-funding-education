@@ -218,7 +218,7 @@ td:first-child{color:var(--text);font-weight:500}
    ZONE INDICATOR
    ============================================================ */
 .zone-bar{display:flex;border-radius:10px;overflow:hidden;margin:1rem 0;height:40px;border:1px solid var(--border)}
-.zone-segment{display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;letter-spacing:.05em;transition:all .3s}
+.zone-segment{display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;letter-spacing:.04em;transition:all .3s;padding:0 .3rem;text-align:center;overflow:hidden;white-space:nowrap}
 .zone-segment.decel{background:rgba(0,255,136,0.1);color:var(--green)}
 .zone-segment.hysteresis{background:rgba(168,85,247,0.1);color:var(--purple)}
 .zone-segment.accel{background:rgba(255,64,96,0.1);color:var(--red)}
@@ -442,9 +442,9 @@ footer a:hover{text-decoration:underline}
     </div>
     <div class="viz-body">
       <div class="zone-bar" id="zone-bar">
-        <div class="zone-segment decel" id="zone-decel" style="flex:3">DECELERATE<br><small>&phi; &lt; T<sub>d</sub></small></div>
-        <div class="zone-segment hysteresis" id="zone-hyst" style="flex:4">HYSTERESIS<br><small>T<sub>d</sub> &le; &phi; &lt; T<sub>s</sub></small></div>
-        <div class="zone-segment accel" id="zone-accel" style="flex:3">ACCELERATE<br><small>&phi; &ge; T<sub>s</sub></small></div>
+        <div class="zone-segment decel" id="zone-decel" style="flex:3">DECEL<br><small>&phi; &lt; T<sub>d</sub></small></div>
+        <div class="zone-segment hysteresis" id="zone-hyst" style="flex:5">HYSTERESIS<br><small>T<sub>d</sub> &le; &phi; &lt; T<sub>s</sub></small></div>
+        <div class="zone-segment accel" id="zone-accel" style="flex:4">ACCELERATE<br><small>&phi; &ge; T<sub>s</sub></small></div>
       </div>
       <div id="zone-pointer" style="position:relative;height:20px;margin:0 0 1rem">
         <div id="zone-indicator" style="position:absolute;left:15%;transform:translateX(-50%);transition:left .3s;text-align:center">
@@ -1613,10 +1613,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const n = 400;
       const skew = [];
       const rate = [];
-      let s = 0.15; // initial skew
+      let s = 0.18; // initial skew
       let v = 0;
-      const alphaInc = 0.0002 * aggr;
-      const alphaDec = alphaInc / 30;
+      const alphaInc = 0.00035 * aggr;
+      const alphaDec = alphaInc / 20;
 
       for (let t = 0; t < n; t++) {
         skew.push(s);
@@ -1624,8 +1624,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Zone logic
         if (Math.abs(s) >= damp) {
           v += alphaInc * s;
-        } else if (Math.abs(s) >= damp * 0.5) {
-          // hysteresis
+        } else if (Math.abs(s) >= damp * 0.4) {
+          // hysteresis — small decay
+          v *= 0.999;
         } else {
           if (v > 0) v = Math.max(0, v - alphaDec);
           else if (v < 0) v = Math.min(0, v + alphaDec);
@@ -1633,10 +1634,12 @@ document.addEventListener('DOMContentLoaded', () => {
         rate.push(v);
 
         // Traders react to funding rate — creates feedback loop
-        const reactStrength = 0.003 * aggr;
+        const reactStrength = 0.004 * aggr;
         s -= v * reactStrength;
-        // Add small noise
-        s += (Math.random() - 0.5) * 0.002;
+        // Add noise for realism
+        s += (Math.random() - 0.5) * 0.003;
+        // Mean-reversion pressure (market forces)
+        s *= 0.998;
         // Clamp
         s = Math.max(-0.3, Math.min(0.3, s));
       }
