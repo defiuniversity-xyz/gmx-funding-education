@@ -5,3 +5,4 @@ screenshot*.mjs
 screenshot*.png
 ss_*.png
 *.png
+.firebase/
