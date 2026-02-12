@@ -1,0 +1,1693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GMX V2 Adaptive Funding Rate — Interactive Deep Dive</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<style>
+/* ============================================================
+   RESET & BASE
+   ============================================================ */
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg-deep:#07080d;--bg-card:rgba(255,255,255,0.035);--bg-card-hover:rgba(255,255,255,0.06);
+  --cyan:#00d4ff;--cyan-dim:rgba(0,212,255,0.15);--orange:#ff6b35;--orange-dim:rgba(255,107,53,0.15);
+  --green:#00ff88;--green-dim:rgba(0,255,136,0.12);--red:#ff4060;--purple:#a855f7;
+  --text:#e2e8f0;--text-dim:#94a3b8;--text-bright:#f8fafc;
+  --border:rgba(255,255,255,0.06);--glow:0 0 40px rgba(0,212,255,0.08);
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  --mono:'SF Mono','Fira Code','Cascadia Code',Consolas,monospace;
+  --nav-w:260px;--progress-h:3px;
+}
+html{scroll-behavior:smooth;font-size:16px}
+body{
+  background:var(--bg-deep);color:var(--text);font-family:var(--font);
+  line-height:1.75;overflow-x:hidden;
+}
+::selection{background:var(--cyan);color:var(--bg-deep)}
+
+/* ============================================================
+   PROGRESS BAR
+   ============================================================ */
+#progress{position:fixed;top:0;left:0;height:var(--progress-h);background:linear-gradient(90deg,var(--cyan),var(--purple));z-index:1000;width:0;transition:width .15s}
+
+/* ============================================================
+   NAVIGATION
+   ============================================================ */
+nav{
+  position:fixed;top:0;left:0;width:var(--nav-w);height:100vh;
+  background:rgba(7,8,13,0.92);backdrop-filter:blur(20px);border-right:1px solid var(--border);
+  z-index:900;padding:2rem 0;overflow-y:auto;
+  transition:transform .3s ease;
+}
+nav .logo{padding:0 1.5rem 1.5rem;border-bottom:1px solid var(--border);margin-bottom:1rem}
+nav .logo span{font-size:.85rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--cyan)}
+nav .logo small{display:block;font-size:.65rem;color:var(--text-dim);margin-top:.25rem;letter-spacing:.05em}
+nav ul{list-style:none;padding:0 .75rem}
+nav li{margin-bottom:2px}
+nav a{
+  display:flex;align-items:center;gap:.6rem;padding:.55rem .75rem;border-radius:8px;
+  font-size:.78rem;color:var(--text-dim);text-decoration:none;transition:all .2s;letter-spacing:.01em;
+}
+nav a:hover{background:var(--bg-card-hover);color:var(--text)}
+nav a.active{background:var(--cyan-dim);color:var(--cyan);font-weight:600}
+nav a .num{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:22px;height:22px;border-radius:6px;font-size:.65rem;font-weight:700;
+  background:var(--bg-card);border:1px solid var(--border);flex-shrink:0;
+}
+nav a.active .num{background:rgba(0,212,255,0.15);border-color:var(--cyan);color:var(--cyan)}
+
+/* Mobile nav toggle */
+#nav-toggle{
+  display:none;position:fixed;top:1rem;left:1rem;z-index:999;
+  width:40px;height:40px;border-radius:10px;background:rgba(7,8,13,0.9);backdrop-filter:blur(10px);
+  border:1px solid var(--border);cursor:pointer;color:var(--text);font-size:1.2rem;
+  align-items:center;justify-content:center;
+}
+@media(max-width:1024px){
+  nav{transform:translateX(-100%)}
+  nav.open{transform:translateX(0)}
+  #nav-toggle{display:flex}
+  main{margin-left:0!important}
+}
+
+/* ============================================================
+   MAIN CONTENT
+   ============================================================ */
+main{margin-left:var(--nav-w);padding:0 2rem 6rem;max-width:900px;margin-right:auto}
+@media(min-width:1400px){main{max-width:960px}}
+
+/* ============================================================
+   HERO
+   ============================================================ */
+.hero{padding:6rem 0 4rem;text-align:center}
+.hero h1{
+  font-size:clamp(1.8rem,4vw,3rem);font-weight:800;line-height:1.2;
+  background:linear-gradient(135deg,var(--cyan),var(--purple),var(--orange));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  margin-bottom:1rem;
+}
+.hero .subtitle{font-size:1.05rem;color:var(--text-dim);max-width:640px;margin:0 auto 2rem;line-height:1.7}
+.hero .stats{display:flex;justify-content:center;gap:2rem;flex-wrap:wrap}
+.hero .stat{
+  padding:.6rem 1.2rem;border-radius:999px;background:var(--bg-card);
+  border:1px solid var(--border);font-size:.8rem;color:var(--text-dim);font-weight:500;
+}
+.hero .stat strong{color:var(--cyan)}
+
+/* ============================================================
+   SECTIONS
+   ============================================================ */
+section{padding:3rem 0 2rem}
+section .section-label{
+  font-size:.7rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--cyan);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem;
+}
+section .section-label::before{content:'';width:24px;height:1px;background:var(--cyan);opacity:.5}
+section h2{font-size:clamp(1.4rem,3vw,2rem);font-weight:700;color:var(--text-bright);margin-bottom:1.5rem;line-height:1.3}
+section h3{font-size:1.15rem;font-weight:700;color:var(--text-bright);margin:2rem 0 .75rem}
+section h4{font-size:1rem;font-weight:600;color:var(--text);margin:1.5rem 0 .5rem}
+p{margin-bottom:1rem}
+strong{color:var(--text-bright)}
+
+/* ============================================================
+   CARDS, CALLOUTS, CODE
+   ============================================================ */
+.card{
+  background:var(--bg-card);border:1px solid var(--border);border-radius:16px;
+  padding:1.75rem;margin:1.5rem 0;backdrop-filter:blur(8px);
+}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin:1.5rem 0}
+.card h4{margin-top:0}
+.callout{
+  border-left:3px solid var(--cyan);padding:1rem 1.25rem;margin:1.5rem 0;
+  background:var(--cyan-dim);border-radius:0 12px 12px 0;
+}
+.callout.warn{border-color:var(--orange);background:var(--orange-dim)}
+.callout.success{border-color:var(--green);background:var(--green-dim)}
+.callout strong{display:block;margin-bottom:.25rem;font-size:.85rem;letter-spacing:.03em}
+.callout p{margin:0;font-size:.9rem}
+pre,code{font-family:var(--mono)}
+pre{
+  background:rgba(0,0,0,0.4);border:1px solid var(--border);border-radius:12px;
+  padding:1.25rem 1.5rem;overflow-x:auto;margin:1.25rem 0;font-size:.82rem;line-height:1.7;
+  color:#a5d6ff;
+}
+code{background:rgba(255,255,255,0.06);padding:.15em .4em;border-radius:4px;font-size:.88em;color:var(--cyan)}
+
+/* ============================================================
+   TABLES
+   ============================================================ */
+.table-wrap{overflow-x:auto;margin:1.5rem 0;border-radius:12px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+thead{background:rgba(0,212,255,0.06)}
+th{text-align:left;padding:.8rem 1rem;font-weight:600;color:var(--cyan);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border)}
+td{padding:.7rem 1rem;border-bottom:1px solid var(--border);color:var(--text-dim)}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--bg-card-hover)}
+td:first-child{color:var(--text);font-weight:500}
+
+/* ============================================================
+   MATH (KaTeX overrides)
+   ============================================================ */
+.math-block{
+  display:block;overflow-x:auto;padding:1.25rem 1.5rem;margin:1.25rem 0;
+  background:rgba(0,0,0,0.3);border:1px solid var(--border);border-radius:12px;
+  text-align:center;
+}
+.katex{font-size:1.05em!important;color:var(--text-bright)}
+.math-block .katex{font-size:1.15em!important}
+
+/* ============================================================
+   INTERACTIVE VIZ CONTAINERS
+   ============================================================ */
+.viz{
+  position:relative;margin:2rem 0;border-radius:16px;overflow:hidden;
+  background:rgba(0,0,0,0.25);border:1px solid var(--border);
+}
+.viz-header{
+  padding:1rem 1.5rem;border-bottom:1px solid var(--border);display:flex;
+  align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;
+}
+.viz-header h4{margin:0;font-size:.9rem;color:var(--text-bright)}
+.viz-header .badge{
+  font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  padding:.3rem .7rem;border-radius:999px;background:var(--cyan-dim);color:var(--cyan);
+}
+.viz-body{padding:1.5rem;position:relative}
+.viz canvas{display:block;width:100%;border-radius:8px}
+.viz-controls{
+  display:flex;flex-wrap:wrap;gap:1rem;padding:1rem 1.5rem;
+  border-top:1px solid var(--border);background:rgba(0,0,0,0.15);
+}
+.control-group{flex:1;min-width:180px}
+.control-group label{display:block;font-size:.72rem;font-weight:600;color:var(--text-dim);margin-bottom:.3rem;letter-spacing:.05em;text-transform:uppercase}
+.control-group input[type=range]{width:100%;accent-color:var(--cyan);cursor:pointer}
+.control-group .val{font-size:.75rem;color:var(--cyan);font-weight:600;font-family:var(--mono)}
+.btn{
+  padding:.5rem 1.2rem;border-radius:8px;border:1px solid var(--cyan);
+  background:var(--cyan-dim);color:var(--cyan);font-size:.8rem;font-weight:600;
+  cursor:pointer;transition:all .2s;font-family:var(--font);
+}
+.btn:hover{background:var(--cyan);color:var(--bg-deep)}
+.btn.secondary{border-color:var(--border);background:var(--bg-card);color:var(--text-dim)}
+.btn.secondary:hover{background:var(--bg-card-hover);color:var(--text)}
+
+/* ============================================================
+   LEGEND
+   ============================================================ */
+.legend{display:flex;gap:1rem;flex-wrap:wrap;margin:.5rem 0}
+.legend-item{display:flex;align-items:center;gap:.4rem;font-size:.75rem;color:var(--text-dim)}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+
+/* ============================================================
+   FLOW / DIAGRAM HELPERS
+   ============================================================ */
+.flow-row{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin:1rem 0}
+.flow-box{
+  padding:.6rem 1rem;border-radius:10px;font-size:.82rem;font-weight:600;
+  border:1px solid var(--border);background:var(--bg-card);text-align:center;
+}
+.flow-arrow{color:var(--text-dim);font-size:1.2rem}
+
+/* ============================================================
+   ZONE INDICATOR
+   ============================================================ */
+.zone-bar{display:flex;border-radius:10px;overflow:hidden;margin:1rem 0;height:40px;border:1px solid var(--border)}
+.zone-segment{display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;letter-spacing:.05em;transition:all .3s}
+.zone-segment.decel{background:rgba(0,255,136,0.1);color:var(--green)}
+.zone-segment.hysteresis{background:rgba(168,85,247,0.1);color:var(--purple)}
+.zone-segment.accel{background:rgba(255,64,96,0.1);color:var(--red)}
+.zone-segment.active-zone{filter:brightness(2.5);transform:scaleY(1)}
+
+/* ============================================================
+   STEP WALKTHROUGH
+   ============================================================ */
+.steps{counter-reset:step}
+.step{
+  position:relative;padding:1rem 1.25rem 1rem 3.5rem;margin:.75rem 0;
+  border-radius:12px;background:var(--bg-card);border:1px solid var(--border);
+  counter-increment:step;transition:all .3s;
+}
+.step::before{
+  content:counter(step);position:absolute;left:1rem;top:1rem;
+  width:24px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  font-size:.72rem;font-weight:700;background:var(--cyan-dim);color:var(--cyan);border:1px solid rgba(0,212,255,0.2);
+}
+.step.active{border-color:var(--cyan);background:var(--cyan-dim)}
+.step h5{font-size:.88rem;font-weight:600;color:var(--text-bright);margin-bottom:.25rem}
+.step p{margin:0;font-size:.85rem;color:var(--text-dim)}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+footer{
+  margin-left:var(--nav-w);padding:3rem 2rem;border-top:1px solid var(--border);
+  color:var(--text-dim);font-size:.78rem;max-width:900px;
+}
+footer h4{font-size:.85rem;color:var(--text);margin-bottom:.75rem}
+footer ol{padding-left:1.5rem;margin-bottom:1rem}
+footer li{margin-bottom:.3rem}
+footer a{color:var(--cyan);text-decoration:none}
+footer a:hover{text-decoration:underline}
+@media(max-width:1024px){footer{margin-left:0}}
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+
+/* ============================================================
+   SCROLLBAR
+   ============================================================ */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.2)}
+</style>
+</head>
+<body>
+
+<!-- PROGRESS BAR -->
+<div id="progress"></div>
+
+<!-- MOBILE NAV TOGGLE -->
+<button id="nav-toggle" aria-label="Toggle navigation">&#9776;</button>
+
+<!-- NAVIGATION -->
+<nav id="sidebar">
+  <div class="logo">
+    <span>GMX V2</span>
+    <small>Adaptive Funding Rate Mechanism</small>
+  </div>
+  <ul>
+    <li><a href="#intro" data-section="intro"><span class="num">1</span>Introduction</a></li>
+    <li><a href="#theory" data-section="theory"><span class="num">2</span>P vs I Controllers</a></li>
+    <li><a href="#math" data-section="math"><span class="num">3</span>Mathematical Derivation</a></li>
+    <li><a href="#contracts" data-section="contracts"><span class="num">4</span>Smart Contracts</a></li>
+    <li><a href="#params" data-section="params"><span class="num">5</span>Parameterization</a></li>
+    <li><a href="#strategy" data-section="strategy"><span class="num">6</span>Strategic Implications</a></li>
+    <li><a href="#compare" data-section="compare"><span class="num">7</span>Comparative Analysis</a></li>
+    <li><a href="#risks" data-section="risks"><span class="num">8</span>Risks &amp; Edge Cases</a></li>
+    <li><a href="#conclusion" data-section="conclusion"><span class="num">9</span>Conclusion</a></li>
+  </ul>
+</nav>
+
+<!-- MAIN CONTENT -->
+<main>
+
+<!-- ============================================================
+     HERO
+     ============================================================ -->
+<header class="hero">
+  <h1>The Mechanics of Equilibrium</h1>
+  <p class="subtitle">A visual deep-dive into how GMX&nbsp;V2 uses control theory to stabilize decentralized perpetual futures through its <em>Velocity-Based Adaptive Funding Rate</em>.</p>
+  <div class="stats">
+    <div class="stat"><strong>9</strong>&nbsp;Sections</div>
+    <div class="stat"><strong>5</strong>&nbsp;Interactive Simulations</div>
+    <div class="stat"><strong>~25</strong>&nbsp;min read</div>
+  </div>
+</header>
+
+<!-- ============================================================
+     SECTION 1 — INTRODUCTION
+     ============================================================ -->
+<section id="intro" class="fade-in">
+  <div class="section-label">Section 1</div>
+  <h2>The Evolution of On-Chain Derivatives</h2>
+
+  <p>The DeFi sector has relentlessly pursued <strong>capital efficiency</strong>, attempting to replicate the depth of centralized order books within blockchain constraints. GMX&nbsp;V2 marks a pivotal transition: from the pooled, multi-asset <strong>GLP</strong> model (V1) to <strong>segregated, isolated GM&nbsp;Pools</strong> (V2).</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <h4 style="color:var(--orange)">GMX V1 &mdash; GLP</h4>
+      <p style="font-size:.88rem;color:var(--text-dim)">All assets aggregated into a single index pool. Risk of any single toxic flow was <em>diluted</em> across the entire basket. Simple, but hard to manage per-asset risk.</p>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--cyan)">GMX V2 &mdash; GM Pools</h4>
+      <p style="font-size:.88rem;color:var(--text-dim)">Each market is isolated: a volatile index token paired with a stablecoin. LPs face <em>concentrated directional risk</em> for the specific asset they provide liquidity to.</p>
+    </div>
+  </div>
+
+  <p>This isolation creates a problem: each pool is exposed to <strong>concentrated directional risk</strong>. If traders pile into Longs on ETH, the ETH/USDC pool bears the full brunt&mdash;there's no basket diversification to absorb it.</p>
+
+  <div class="callout">
+    <strong>The Core Problem</strong>
+    <p>GMX&nbsp;V2 executes trades at <strong>oracle prices</strong> (via Chainlink Data Streams). There is no order book, and therefore no <em>price premium</em>&mdash;the traditional signal used to calculate funding rates. A new signal is needed.</p>
+  </div>
+
+  <p>The solution: construct a <strong>synthetic premium</strong> derived not from price deviation, but from <strong>Open Interest (OI) Imbalance</strong>. The resulting mechanism is an <em>Integral (I) Controller</em>&mdash;it doesn't just penalize current imbalances; it <strong>integrates them over time</strong>, creating an accelerating "velocity" of funding costs.</p>
+</section>
+
+<!-- ============================================================
+     SECTION 2 — THEORETICAL FRAMEWORK
+     ============================================================ -->
+<section id="theory" class="fade-in">
+  <div class="section-label">Section 2</div>
+  <h2>Theoretical Framework: P vs I Controllers</h2>
+
+  <h3>2.1 &mdash; The Proportional (P) Model: Industry Standard</h3>
+  <p>Most perpetual futures markets (Binance, Bybit, dYdX&nbsp;V3) use a <strong>Proportional controller</strong>. The funding rate is directly proportional to the <em>price premium</em>&mdash;the gap between the perpetual mark price and the spot index price.</p>
+
+  <div class="math-block">$$\text{Rate}(t) = k \cdot (\text{Mark Price} - \text{Index Price})$$</div>
+
+  <p>If the price gap closes, the rate <strong>immediately drops to zero</strong>. The system has <strong>no memory</strong>&mdash;it reacts only to the instantaneous state.</p>
+
+  <h3>2.2 &mdash; The Integral (I) Model: The GMX V2 Innovation</h3>
+  <p>Since GMX&nbsp;V2 trades execute at oracle price (mark&nbsp;&asymp;&nbsp;index), the price premium is effectively zero. Instead, GMX substitutes <strong>Open Interest Imbalance</strong> for price premium.</p>
+
+  <p>But a simple proportional reaction to imbalance isn't enough. A 10% imbalance might be sustainable for an hour but <strong>fatal for a month</strong>. The protocol needs to recognize the <em>duration</em> of risk.</p>
+
+  <p>GMX employs an <strong>Integral (I) controller</strong>. The <em>change</em> in the funding rate is proportional to the imbalance:</p>
+
+  <div class="math-block">$$\frac{d(\text{Rate})}{dt} = \alpha \cdot \text{Imbalance}(t)$$</div>
+
+  <p>Integrating, the funding rate at time \(t\) becomes the <strong>accumulation of all past imbalances</strong>:</p>
+
+  <div class="math-block">$$\text{Rate}(t) = \alpha \int_0^{t} \text{Imbalance}(\tau)\, d\tau$$</div>
+
+  <div class="callout success">
+    <strong>Key Insight: Memory &amp; Hysteresis</strong>
+    <p>A persistent skew causes the funding rate to <strong>ramp up continuously</strong>. Even if the skew later reduces, the accumulated rate remains high. The system remembers past imbalances&mdash;this is called <strong>Hysteresis</strong>.</p>
+  </div>
+
+  <!-- P vs I INTERACTIVE VISUALIZATION -->
+  <div class="viz">
+    <div class="viz-header">
+      <h4>Interactive: P-Controller vs I-Controller</h4>
+      <span class="badge">Simulation</span>
+    </div>
+    <div class="viz-body">
+      <canvas id="cvs-pvi" height="300"></canvas>
+      <div class="legend" style="margin-top:.75rem">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>Skew Signal (input)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>P-Controller Rate</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>I-Controller Rate (GMX V2)</div>
+      </div>
+    </div>
+    <div class="viz-controls">
+      <div class="control-group">
+        <label>Skew Duration (seconds)</label>
+        <input type="range" id="pvi-duration" min="10" max="120" value="40" step="5">
+        <span class="val" id="pvi-duration-val">40s</span>
+      </div>
+      <div class="control-group">
+        <label>Skew Magnitude</label>
+        <input type="range" id="pvi-mag" min="5" max="50" value="20" step="1">
+        <span class="val" id="pvi-mag-val">20%</span>
+      </div>
+      <div class="control-group" style="flex:0;min-width:auto;display:flex;align-items:flex-end">
+        <button class="btn" id="pvi-run">Run Simulation</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 3 — MATHEMATICAL DERIVATION
+     ============================================================ -->
+<section id="math" class="fade-in">
+  <div class="section-label">Section 3</div>
+  <h2>Mathematical Derivation of the Velocity Mechanism</h2>
+
+  <h3>3.1 &mdash; The Imbalance Metric</h3>
+  <p>The primary input to the controller is the <strong>OI Imbalance</strong>. Let \(OI_L\) and \(OI_S\) be the Long and Short open interest in USD:</p>
+
+  <div class="math-block">$$\phi_{\text{raw}} = \frac{|OI_L - OI_S|}{OI_L + OI_S}$$</div>
+
+  <p>GMX&nbsp;V2 introduces a <strong>convexity parameter</strong>, the <code>fundingExponentFactor</code> (\(\gamma\)), to enable non-linear responses:</p>
+
+  <div class="math-block">$$\phi = \phi_{\text{raw}}^{\,\gamma}$$</div>
+
+  <p>On Arbitrum (ETH-USD), \(\gamma = 1\) (linear). But \(\gamma > 1\) allows the protocol to aggressively punish extreme skews (&gt;80%) while remaining lenient on minor deviations.</p>
+
+  <h3>3.2 &mdash; The Three-Zone State Machine</h3>
+  <p>The <code>fundingFactorPerSecond</code> (\(v\)) is updated according to a <strong>state machine</strong> with three zones, determined by comparing \(\phi\) against two thresholds:</p>
+
+  <ul style="margin:1rem 0 1rem 1.5rem;color:var(--text-dim)">
+    <li><strong style="color:var(--text)">Threshold for Stable Funding</strong> (\(T_s\)) &mdash; upper boundary</li>
+    <li><strong style="color:var(--text)">Threshold for Decrease Funding</strong> (\(T_d\)) &mdash; lower boundary</li>
+  </ul>
+
+  <!-- ZONE VISUALIZATION -->
+  <div class="viz">
+    <div class="viz-header">
+      <h4>Interactive: Three-Zone State Machine</h4>
+      <span class="badge">Explore</span>
+    </div>
+    <div class="viz-body">
+      <div class="zone-bar" id="zone-bar">
+        <div class="zone-segment decel" id="zone-decel" style="flex:3">DECELERATE<br><small>&phi; &lt; T<sub>d</sub></small></div>
+        <div class="zone-segment hysteresis" id="zone-hyst" style="flex:4">HYSTERESIS<br><small>T<sub>d</sub> &le; &phi; &lt; T<sub>s</sub></small></div>
+        <div class="zone-segment accel" id="zone-accel" style="flex:3">ACCELERATE<br><small>&phi; &ge; T<sub>s</sub></small></div>
+      </div>
+      <div id="zone-pointer" style="position:relative;height:20px;margin:0 0 1rem">
+        <div id="zone-indicator" style="position:absolute;left:15%;transform:translateX(-50%);transition:left .3s;text-align:center">
+          <div style="font-size:1.5rem">&#9650;</div>
+          <div style="font-size:.72rem;font-weight:700;color:var(--cyan);font-family:var(--mono)" id="zone-phi-label">&phi; = 0.15</div>
+        </div>
+      </div>
+      <div id="zone-formula" class="math-block" style="transition:all .3s">$$v_{t+1} = v_t + \alpha_{\text{inc}} \cdot \phi \cdot \Delta t$$</div>
+      <p id="zone-explain" style="font-size:.85rem;color:var(--text-dim);text-align:center;margin-top:.5rem">The funding rate is <strong>accelerating</strong> because the imbalance exceeds the stable threshold.</p>
+    </div>
+    <div class="viz-controls">
+      <div class="control-group">
+        <label>Imbalance (&phi;)</label>
+        <input type="range" id="zone-slider" min="0" max="100" value="15" step="1">
+        <span class="val" id="zone-slider-val">15%</span>
+      </div>
+      <div class="control-group">
+        <label>T<sub>s</sub> (Stable Threshold)</label>
+        <input type="range" id="zone-ts" min="3" max="30" value="10" step="1">
+        <span class="val" id="zone-ts-val">10%</span>
+      </div>
+      <div class="control-group">
+        <label>T<sub>d</sub> (Decrease Threshold)</label>
+        <input type="range" id="zone-td" min="1" max="20" value="5" step="1">
+        <span class="val" id="zone-td-val">5%</span>
+      </div>
+    </div>
+  </div>
+
+  <h4>Zone 1: Acceleration (\(\phi \geq T_s\))</h4>
+  <div class="math-block">$$v_{t+1} = v_t + \alpha_{\text{inc}} \cdot \phi \cdot \Delta t$$</div>
+  <p>A 20% skew accelerates the rate <strong>twice as fast</strong> as a 10% skew. Critical threats to LP solvency trigger rapidly escalating costs.</p>
+
+  <h4>Zone 2: Hysteresis / Deadband (\(T_d \leq \phi < T_s\))</h4>
+  <div class="math-block">$$v_{t+1} = v_t$$</div>
+  <p>The rate <strong>freezes</strong> at whatever level it previously reached. Minor fluctuations don't cause jitter. Traders must push the skew <em>below \(T_d\)</em> to get relief.</p>
+
+  <h4>Zone 3: Deceleration (\(\phi < T_d\))</h4>
+  <div class="math-block">$$v_{t+1} = v_t - \alpha_{\text{dec}} \cdot \Delta t$$</div>
+  <p>Unlike acceleration, deceleration is <strong>constant</strong> (not proportional to skew). And \(\alpha_{\text{dec}}\) is typically <strong>50&times; smaller</strong> than \(\alpha_{\text{inc}}\). This creates a <em>fast-up, slow-down</em> asymmetry.</p>
+
+  <h3>3.3 &mdash; Polarity Flips</h3>
+  <p>If the skew flips direction (Longs dominant &rarr; Shorts dominant), the opposing skew acts as a <strong>massive deceleration force</strong>, driving the accumulated rate rapidly toward zero and then into the negative domain (Shorts pay Longs).</p>
+</section>
+
+<!-- ============================================================
+     SECTION 4 — SMART CONTRACT ARCHITECTURE
+     ============================================================ -->
+<section id="contracts" class="fade-in">
+  <div class="section-label">Section 4</div>
+  <h2>Smart Contract Architecture: O(1) Complexity</h2>
+
+  <p>Implementing an integral-based funding mechanism on-chain for thousands of positions without iterating through them (which would exceed gas limits) requires an elegant solution. GMX&nbsp;V2 uses a <strong>Cumulative Indexing</strong> pattern.</p>
+
+  <h3>4.1 &mdash; Global State Accumulators</h3>
+  <p>Instead of tracking each user's funding debt, the protocol maintains <strong>global cumulative counters</strong> for each market in the <code>DataStore</code> contract:</p>
+
+  <div class="card" style="font-family:var(--mono);font-size:.82rem;line-height:2;color:var(--cyan)">
+    <div><span style="color:var(--text-dim)">// Key global state variables:</span></div>
+    <div>cumulativeFundingFactorLong &nbsp;<span style="color:var(--text-dim)">// Total funding owed by/to Longs per unit OI</span></div>
+    <div>cumulativeFundingFactorShort <span style="color:var(--text-dim)">// Total funding owed by/to Shorts per unit OI</span></div>
+    <div>lastFundingTime &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--text-dim)">// Timestamp of last state update</span></div>
+    <div>fundingFactorPerSecond &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--text-dim)">// Current velocity v(t)</span></div>
+  </div>
+
+  <h3>4.2 &mdash; The <code>updateFundingState</code> Workflow</h3>
+  <p>Every liquidity event (swap, deposit, withdrawal, trade) triggers an atomic update of these accumulators:</p>
+
+  <div class="steps">
+    <div class="step">
+      <h5>Calculate Time Delta</h5>
+      <p><code>secondsElapsed = block.timestamp - lastFundingTime</code></p>
+    </div>
+    <div class="step">
+      <h5>Derive Next Rate</h5>
+      <p>Call <code>getNextFundingFactorPerSecond</code> using the 3-zone logic from Section&nbsp;3. This updates velocity \(v\) based on current OI skew.</p>
+    </div>
+    <div class="step">
+      <h5>Integrate Cost</h5>
+      <p>Calculate funding accrued: <code>fundingAccrued = v &times; secondsElapsed</code></p>
+    </div>
+    <div class="step">
+      <h5>Update Accumulators</h5>
+      <p>If Longs pay Shorts: <code>cumulativeFundingFactorLong += fundingAccrued</code>, <code>claimableFundingFactorShort += fundingAccrued</code></p>
+    </div>
+    <div class="step">
+      <h5>Commit State</h5>
+      <p>Save the new \(v\), updated cumulative factors, and <code>block.timestamp</code> to <code>DataStore</code>.</p>
+    </div>
+  </div>
+
+  <h3>4.3 &mdash; Position-Level O(1) Calculation</h3>
+  <p>When a user <em>opens</em> a position, the protocol snapshots the global cumulative factor:</p>
+
+  <div class="math-block">$$\text{snapshot} = C_{\text{global}}(t_{\text{open}})$$</div>
+
+  <p>When the user <em>closes</em> at time \(t_{\text{close}}\):</p>
+
+  <div class="math-block">$$\text{Funding Fee} = \text{sizeInUsd} \times \left[ C_{\text{global}}(t_{\text{close}}) - C_{\text{global}}(t_{\text{open}}) \right]$$</div>
+
+  <div class="callout success">
+    <strong>The "Magic" of Cumulative Indexing</strong>
+    <p>This simple subtraction yields the <strong>exact integral</strong> of the funding rate over the position's lifetime, without looping through any blocks or history. Scalable to millions of users at O(1) per operation.</p>
+  </div>
+
+  <!-- O(1) ANIMATION -->
+  <div class="viz">
+    <div class="viz-header">
+      <h4>Visualization: Cumulative Indexing Pattern</h4>
+      <span class="badge">Animation</span>
+    </div>
+    <div class="viz-body">
+      <canvas id="cvs-cumulative" height="280"></canvas>
+    </div>
+    <div class="viz-controls">
+      <div class="control-group" style="flex:0;min-width:auto;display:flex;align-items:flex-end">
+        <button class="btn" id="cum-run">Play Animation</button>
+      </div>
+      <div class="control-group" style="flex:0;min-width:auto;display:flex;align-items:flex-end">
+        <button class="btn secondary" id="cum-reset">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <h3>4.4 &mdash; The "Claimable" Asymmetry</h3>
+  <p>The amount <strong>paid by the dominant side</strong> is not necessarily equal to what the minority side <strong>receives</strong>. If Long&nbsp;OI is $100M and Short&nbsp;OI is $10M, and Longs pay 0.1%:</p>
+  <ul style="margin:1rem 0 1rem 1.5rem;color:var(--text-dim)">
+    <li><strong style="color:var(--text)">Total Paid by Longs:</strong> $100,000</li>
+    <li><strong style="color:var(--text)">If distributed to $10M of Shorts:</strong> 1% yield</li>
+  </ul>
+  <p>The protocol tracks <code>longTokenClaimableFundingAmountPerSize</code> separately for accurate distribution.</p>
+</section>
+
+<!-- ============================================================
+     SECTION 5 — PARAMETERIZATION
+     ============================================================ -->
+<section id="params" class="fade-in">
+  <div class="section-label">Section 5</div>
+  <h2>Parameterization: The Economics of Stiffness</h2>
+
+  <p>Whether the controller is <strong>"loose"</strong> (slow to react) or <strong>"stiff"</strong> (aggressive) is determined by parameters stored in the <code>DataStore</code>.</p>
+
+  <h3>5.1 &mdash; Live Parameters (ETH-USD, Arbitrum)</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Parameter</th><th>Function</th><th>Typical Value</th><th>Implication</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>\(\alpha_{\text{inc}}\)</td><td>Acceleration</td><td>~0.0001% / s</td><td>~0.36% increase in hourly APR per hour of imbalance</td></tr>
+        <tr><td>\(\alpha_{\text{dec}}\)</td><td>Deceleration</td><td>~0.000002% / s</td><td>~0.0072% decrease in hourly APR per hour</td></tr>
+        <tr><td>\(T_s\)</td><td>Deadband (Upper)</td><td>5% &ndash; 10%</td><td>Tolerates 5-10% skew without penalty</td></tr>
+        <tr><td>\(T_d\)</td><td>Deadband (Lower)</td><td>3% &ndash; 5%</td><td>Skew must drop below this to lower the rate</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>5.2 &mdash; The 50&times; Asymmetry</h3>
+
+  <div class="math-block">$$\frac{\alpha_{\text{inc}}}{\alpha_{\text{dec}}} \approx 50$$</div>
+
+  <p>The protocol ramps up funding costs <strong>50 times faster</strong> than it allows them to cool down.</p>
+
+  <div class="callout warn">
+    <strong>Why the Asymmetry?</strong>
+    <p>Defense against "Flash Skews." If an attacker creates a massive skew for 10&nbsp;minutes, the rate spikes instantly. When they leave, the rate stays elevated for <em>hours</em>&mdash;ensuring LPs collect a lingering <strong>risk premium</strong> even after the threat has passed.</p>
+  </div>
+
+  <!-- ASYMMETRY / STICKY RATE SIMULATION -->
+  <div class="viz">
+    <div class="viz-header">
+      <h4>Interactive: The "Sticky Rate" &amp; Asymmetry</h4>
+      <span class="badge">Simulation</span>
+    </div>
+    <div class="viz-body">
+      <canvas id="cvs-sticky" height="320"></canvas>
+      <div class="legend" style="margin-top:.75rem">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>Skew (%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>Funding Rate (v)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:rgba(168,85,247,0.5);border:1px solid var(--purple)"></div>Hysteresis Zone</div>
+      </div>
+    </div>
+    <div class="viz-controls">
+      <div class="control-group">
+        <label>&alpha;<sub>inc</sub> / &alpha;<sub>dec</sub> Ratio</label>
+        <input type="range" id="sticky-ratio" min="2" max="100" value="50" step="1">
+        <span class="val" id="sticky-ratio-val">50x</span>
+      </div>
+      <div class="control-group">
+        <label>T<sub>s</sub> (Stable Threshold)</label>
+        <input type="range" id="sticky-ts" min="5" max="25" value="10" step="1">
+        <span class="val" id="sticky-ts-val">10%</span>
+      </div>
+      <div class="control-group">
+        <label>T<sub>d</sub> (Decrease Threshold)</label>
+        <input type="range" id="sticky-td" min="1" max="15" value="5" step="1">
+        <span class="val" id="sticky-td-val">5%</span>
+      </div>
+      <div class="control-group" style="flex:0;min-width:auto;display:flex;align-items:flex-end">
+        <button class="btn" id="sticky-run">Run Scenario</button>
+      </div>
+    </div>
+  </div>
+
+  <h3>5.3 &mdash; The "Sticky Rate" Walkthrough</h3>
+  <div class="steps">
+    <div class="step"><h5>Spike</h5><p>A market event pushes Long skew to <strong>20%</strong>. Funding rate accelerates rapidly (\(\phi > T_s\)).</p></div>
+    <div class="step"><h5>Correction</h5><p>Arbitrageurs enter, pushing skew down to <strong>6%</strong>.</p></div>
+    <div class="step"><h5>Hysteresis Trap</h5><p>6% is below \(T_s\) (10%) but above \(T_d\) (5%). The rate <strong>stops rising but does not fall</strong>. It's frozen at its peak.</p></div>
+    <div class="step"><h5>Continued Pressure</h5><p>Longs still pay punitive rates. They must further close positions until skew drops <strong>below 5%</strong>.</p></div>
+    <div class="step"><h5>Slow Descent</h5><p>Below \(T_d\), the rate finally declines&mdash;but at 1/50th the speed it rose. LPs retain their premium for hours.</p></div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 6 — STRATEGIC IMPLICATIONS
+     ============================================================ -->
+<section id="strategy" class="fade-in">
+  <div class="section-label">Section 6</div>
+  <h2>Strategic Implications for Participants</h2>
+
+  <h3>6.1 &mdash; The "Double-Integral" Cost Curve</h3>
+  <p>For a trader on the dominant side (e.g., Long when the market is Long-heavy), the cost of holding is <strong>not constant&mdash;it's quadratic</strong>.</p>
+
+  <p>If imbalance remains constant and \(\phi > T_s\):</p>
+  <div class="math-block">$$v(t) \propto t \quad \Rightarrow \quad \text{Total Fee} = \int_0^t v(\tau)\, d\tau \propto t^2$$</div>
+
+  <div class="callout warn">
+    <strong>The Exponential Trap</strong>
+    <p>Holding for <strong>2 hours costs 4&times;</strong> as much as 1 hour. <strong>3 hours costs 9&times;</strong> as much. This makes fighting the trend economically unviable over medium-to-long timeframes.</p>
+  </div>
+
+  <!-- COST CURVE VISUALIZATION -->
+  <div class="viz">
+    <div class="viz-header">
+      <h4>Interactive: Linear vs Quadratic Cost</h4>
+      <span class="badge">Simulation</span>
+    </div>
+    <div class="viz-body">
+      <canvas id="cvs-cost" height="300"></canvas>
+      <div class="legend" style="margin-top:.75rem">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>P-Controller: Linear Cost (kt)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>I-Controller: Quadratic Cost (kt&sup2;)</div>
+      </div>
+    </div>
+    <div class="viz-controls">
+      <div class="control-group">
+        <label>Time Horizon (hours)</label>
+        <input type="range" id="cost-time" min="1" max="24" value="8" step="1">
+        <span class="val" id="cost-time-val">8h</span>
+      </div>
+      <div class="control-group">
+        <label>Base Rate Factor</label>
+        <input type="range" id="cost-rate" min="1" max="20" value="5" step="1">
+        <span class="val" id="cost-rate-val">5</span>
+      </div>
+    </div>
+  </div>
+
+  <h3>6.2 &mdash; Arbitrage: OI vs Price</h3>
+  <div class="card-grid">
+    <div class="card">
+      <h4 style="color:var(--text-dim)">Traditional (dYdX / Binance)</h4>
+      <p style="font-size:.85rem;color:var(--text-dim)">Arbitrageurs look for <strong style="color:var(--text)">Price Premiums</strong>. If Perp&nbsp;Price &gt; Spot&nbsp;Price, short the perp and long the spot.</p>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--cyan)">GMX V2</h4>
+      <p style="font-size:.85rem;color:var(--text-dim)">Price execution is at oracle. Arbitrageurs instead target <strong style="color:var(--cyan)">OI Imbalance</strong> and accumulated velocity. Profit from the <em>sticky</em> funding rate by entering the minority side.</p>
+    </div>
+  </div>
+
+  <p>The strategy: identify a market with high accumulated <code>fundingFactorPerSecond</code>, check if the skew is in the Hysteresis or Deceleration zone, and enter the <strong>minority side</strong>. Even at zero skew, the slowly-decaying rate offers a "free lunch" yield.</p>
+
+  <h3>6.3 &mdash; LP Risk Profile</h3>
+  <div class="card-grid">
+    <div class="card">
+      <h4 style="color:var(--green)">Isolation</h4>
+      <p style="font-size:.85rem;color:var(--text-dim)">Toxic flow in AVAX/USD does not affect ETH/USD LPs. Risk is contained to each GM Pool.</p>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--green)">Compensation</h4>
+      <p style="font-size:.85rem;color:var(--text-dim)">The sticky rate ensures LPs are <strong style="color:var(--text)">over-compensated</strong> for transient spikes. They collect "rent" for the volatility they endured.</p>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--green)">Auto-Hedging</h4>
+      <p style="font-size:.85rem;color:var(--text-dim)">High funding rates attract external arbitrageurs who effectively <strong style="color:var(--text)">neutralize LP exposure</strong> by taking the opposite side.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 7 — COMPARATIVE ANALYSIS
+     ============================================================ -->
+<section id="compare" class="fade-in">
+  <div class="section-label">Section 7</div>
+  <h2>Comparative Analysis: GMX vs dYdX vs Binance</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Feature</th><th style="color:var(--cyan)">GMX V2 (Adaptive)</th><th style="color:var(--orange)">dYdX / Binance (Standard)</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Control Type</td><td>Integral (I) Controller</td><td>Proportional (P) Controller</td></tr>
+        <tr><td>Driver</td><td>Open Interest Imbalance</td><td>Price Premium (Mark &minus; Index)</td></tr>
+        <tr><td>Response Time</td><td>Lagged (accumulates over time)</td><td>Instant (reflects current book)</td></tr>
+        <tr><td>Correction Behavior</td><td><strong>Sticky</strong> (Hysteresis)</td><td>Elastic (snaps to zero)</td></tr>
+        <tr><td>Cost Curve</td><td><strong>Quadratic</strong> (time-dependent)</td><td>Linear (constant rate)</td></tr>
+        <tr><td>Arb Opportunity</td><td>Yield Arbitrage (Funding Spread)</td><td>Price Arbitrage (Basis Convergence)</td></tr>
+        <tr><td>LP Protection</td><td><strong>High</strong> (penalty lingers)</td><td>Low (no penalty if price matches)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <strong>Critical Insight</strong>
+    <p>GMX is less efficient at discovering <strong>"fair price"</strong> (oracle-bound) but far more efficient at discovering <strong>"fair risk cost."</strong> Standard exchanges discover price but often underprice inventory risk. GMX externalizes this risk directly to traders via the funding velocity.</p>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 8 — RISKS
+     ============================================================ -->
+<section id="risks" class="fade-in">
+  <div class="section-label">Section 8</div>
+  <h2>Simulation Risks &amp; Edge Cases</h2>
+
+  <h3>8.1 &mdash; Oscillation Risk</h3>
+  <p>If \(\alpha_{\text{inc}}\) is tuned too aggressively, the system risks entering an <strong>oscillatory state</strong>:</p>
+
+  <div class="flow-row">
+    <div class="flow-box" style="border-color:var(--red)">Skew arises</div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-box" style="border-color:var(--red)">Rate skyrockets</div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-box" style="border-color:var(--orange)">Mass close / flip</div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-box" style="border-color:var(--green)">Skew flips to Short</div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-box" style="border-color:var(--red)">Repeat</div>
+  </div>
+
+  <p>This "whipsaw" effect bleeds LPs who take the other side of these flips. The <strong><code>thresholdForStableFunding</code></strong> acts as a dampener&mdash;a friction term&mdash;to prevent harmonic oscillation.</p>
+
+  <!-- OSCILLATION VISUALIZATION -->
+  <div class="viz">
+    <div class="viz-header">
+      <h4>Visualization: Oscillation Risk</h4>
+      <span class="badge">Simulation</span>
+    </div>
+    <div class="viz-body">
+      <canvas id="cvs-oscillation" height="250"></canvas>
+      <div class="legend" style="margin-top:.75rem">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>Skew (%)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>Funding Rate</div>
+      </div>
+    </div>
+    <div class="viz-controls">
+      <div class="control-group">
+        <label>Aggressiveness</label>
+        <input type="range" id="osc-aggr" min="1" max="10" value="5" step="1">
+        <span class="val" id="osc-aggr-val">5</span>
+      </div>
+      <div class="control-group">
+        <label>Damping (T<sub>s</sub>)</label>
+        <input type="range" id="osc-damp" min="0" max="20" value="8" step="1">
+        <span class="val" id="osc-damp-val">8%</span>
+      </div>
+      <div class="control-group" style="flex:0;min-width:auto;display:flex;align-items:flex-end">
+        <button class="btn" id="osc-run">Run</button>
+      </div>
+    </div>
+  </div>
+
+  <h3>8.2 &mdash; The "Death Spiral"</h3>
+  <p>If the funding rate rises too fast, it can trigger <strong>cascading liquidations</strong>:</p>
+
+  <div class="flow-row">
+    <div class="flow-box" style="border-color:var(--red)">Rate too high</div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-box" style="border-color:var(--red)">Forced liquidations</div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-box" style="border-color:var(--orange)">Market orders cascade</div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-box" style="border-color:var(--orange)">Pool destabilized</div>
+  </div>
+
+  <div class="callout success">
+    <strong>Safety Mechanism: Auto-Deleveraging (ADL)</strong>
+    <p>If funding rates aren't working fast enough to protect the pool, GMX&nbsp;V2 employs ADL as a fail-safe: profitable positions are forcibly closed against the pool to ensure solvency.</p>
+  </div>
+</section>
+
+<!-- ============================================================
+     SECTION 9 — CONCLUSION
+     ============================================================ -->
+<section id="conclusion" class="fade-in">
+  <div class="section-label">Section 9</div>
+  <h2>Conclusion: A Landmark in DeFi Mechanics</h2>
+
+  <p>The GMX&nbsp;V2 "Velocity-Based" Adaptive Funding Rate solves the <strong>"Oracle-Pricing Liquidity Problem"</strong>&mdash;creating a synthetic market force that mimics order book pressure without requiring one.</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <h4 style="color:var(--cyan)">Prioritizes Solvency</h4>
+      <p style="font-size:.85rem;color:var(--text-dim)">LPs are compensated for the <em>duration</em> of risk, not just the magnitude.</p>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--orange)">Penalizes Persistence</h4>
+      <p style="font-size:.85rem;color:var(--text-dim)">Quadratic cost curve makes long-term toxic flow economically impossible.</p>
+    </div>
+    <div class="card">
+      <h4 style="color:var(--green)">Incentivizes Balance</h4>
+      <p style="font-size:.85rem;color:var(--text-dim)">Predictable, high-yield opportunities for arbitrageurs to neutralize pool skews.</p>
+    </div>
+  </div>
+
+  <p>For <strong>smart contract engineers</strong>, the O(1) cumulative indexing pattern is a blueprint for scalable state management. For <strong>traders and analysts</strong>, understanding the "sticky" nature of the rate and the acceleration/deceleration asymmetry is the key to edge&mdash;profitability lies not just in predicting price, but in <em>predicting the velocity of the funding mechanism itself</em>.</p>
+
+  <h3>Appendix A: Symbol Reference</h3>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Symbol</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>\(v(t)\)</td><td>Funding Factor Per Second at time \(t\)</td></tr>
+        <tr><td>\(\phi\)</td><td>Open Interest Imbalance</td></tr>
+        <tr><td>\(\gamma\)</td><td>Funding Exponent Factor</td></tr>
+        <tr><td>\(T_s\)</td><td>Threshold for Stable Funding</td></tr>
+        <tr><td>\(T_d\)</td><td>Threshold for Decrease Funding</td></tr>
+        <tr><td>\(\alpha_{\text{inc}}\)</td><td>Velocity Increase Factor (Acceleration)</td></tr>
+        <tr><td>\(\alpha_{\text{dec}}\)</td><td>Velocity Decrease Factor (Deceleration)</td></tr>
+        <tr><td>\(C_{\text{global}}\)</td><td>Global Cumulative Funding Factor</td></tr>
+        <tr><td>\(C_{\text{user}}\)</td><td>User's snapshot of Cumulative Factor</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</main>
+
+<!-- FOOTER -->
+<footer>
+  <h4>Sources &amp; References</h4>
+  <ol>
+    <li><a href="https://github.com/gmx-io/gmx-synthetics/blob/main/README.md" target="_blank">gmx-synthetics GitHub &mdash; README.md</a></li>
+    <li><a href="https://github.com/gmx-io/gmx-synthetics" target="_blank">gmx-io/gmx-synthetics Repository</a></li>
+    <li><a href="https://blog.synthetix.io/synthetix-perps-dynamic-funding-rates/" target="_blank">Synthetix &mdash; Dynamic Funding Rates</a></li>
+    <li><a href="https://chaoslabs.xyz/resources/chaos_gmx_genesis_risk_framework_methodology.pdf" target="_blank">Chaos Labs &mdash; GMX V2 Risk Framework</a></li>
+    <li><a href="https://github.com/gmx-io/gmx-synthetics/blob/main/contracts/pricing/PositionPricingUtils.sol" target="_blank">PositionPricingUtils.sol</a></li>
+    <li><a href="https://ld-capital.medium.com/changes-and-impacts-of-gmx-v2-6ed0e4c10f93" target="_blank">LD Capital &mdash; Changes and Impacts of GMX V2</a></li>
+    <li><a href="https://medium.com/@compasslabs/a-guide-to-perpetual-contracts-and-gmx-v2-a4770cbc25e3" target="_blank">Compass Labs &mdash; Guide to Perpetual Contracts and GMX V2</a></li>
+  </ol>
+  <p style="margin-top:1.5rem;opacity:.5">&copy; 2026 &mdash; Interactive educational resource. Not financial advice.</p>
+</footer>
+
+<!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+  /* ============================
+     KaTeX Auto-render
+     ============================ */
+  if (typeof renderMathInElement !== 'undefined') {
+    renderMathInElement(document.body, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '\\(', right: '\\)', display: false},
+        {left: '\\[', right: '\\]', display: true}
+      ],
+      throwOnError: false
+    });
+  } else {
+    // KaTeX may load asynchronously
+    window.addEventListener('load', () => {
+      if (typeof renderMathInElement !== 'undefined') {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '\\(', right: '\\)', display: false},
+            {left: '\\[', right: '\\]', display: true}
+          ],
+          throwOnError: false
+        });
+      }
+    });
+  }
+
+  /* ============================
+     Progress Bar
+     ============================ */
+  const progressBar = document.getElementById('progress');
+  window.addEventListener('scroll', () => {
+    const h = document.documentElement;
+    const pct = (h.scrollTop / (h.scrollHeight - h.clientHeight)) * 100;
+    progressBar.style.width = pct + '%';
+  }, {passive: true});
+
+  /* ============================
+     Mobile Nav Toggle
+     ============================ */
+  const sidebar = document.getElementById('sidebar');
+  const navToggle = document.getElementById('nav-toggle');
+  navToggle.addEventListener('click', () => sidebar.classList.toggle('open'));
+  document.addEventListener('click', e => {
+    if (sidebar.classList.contains('open') && !sidebar.contains(e.target) && e.target !== navToggle) {
+      sidebar.classList.remove('open');
+    }
+  });
+
+  /* ============================
+     Active Nav Link (Intersection Observer)
+     ============================ */
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('nav a[data-section]');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        navLinks.forEach(a => a.classList.remove('active'));
+        const link = document.querySelector(`nav a[data-section="${entry.target.id}"]`);
+        if (link) link.classList.add('active');
+      }
+    });
+  }, {rootMargin: '-20% 0px -70% 0px'});
+  sections.forEach(s => observer.observe(s));
+
+  /* ============================
+     Fade-in on Scroll
+     ============================ */
+  const fadeEls = document.querySelectorAll('.fade-in');
+  const fadeObs = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); fadeObs.unobserve(e.target); }});
+  }, {threshold: 0.08});
+  fadeEls.forEach(el => fadeObs.observe(el));
+
+  /* ============================
+     CANVAS HELPERS
+     ============================ */
+  const dpr = window.devicePixelRatio || 1;
+  function setupCanvas(id) {
+    const canvas = document.getElementById(id);
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width;
+    const h = canvas.height; // use the attribute height as logical height
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    return {canvas, ctx, w, h};
+  }
+
+  function drawGrid(ctx, w, h, pad) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 10; i++) {
+      const x = pad.l + (w - pad.l - pad.r) * i / 10;
+      ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, h - pad.b); ctx.stroke();
+    }
+    for (let i = 0; i <= 5; i++) {
+      const y = pad.t + (h - pad.t - pad.b) * i / 5;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+    }
+  }
+
+  function drawAxes(ctx, w, h, pad, xLabel, yLabel) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, h - pad.b); ctx.lineTo(w - pad.r, h - pad.b); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = '11px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(xLabel, (pad.l + w - pad.r) / 2, h - 4);
+    ctx.save();
+    ctx.translate(10, (pad.t + h - pad.b) / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(yLabel, 0, 0);
+    ctx.restore();
+  }
+
+  function drawLine(ctx, points, color, lw) {
+    if (points.length < 2) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw || 2;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], points[0][1]);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+    ctx.stroke();
+  }
+
+  function fillArea(ctx, points, baseY, color) {
+    if (points.length < 2) return;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(points[0][0], baseY);
+    for (let i = 0; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+    ctx.lineTo(points[points.length - 1][0], baseY);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  /* ============================
+     VIZ 1: P vs I Controller
+     ============================ */
+  (function initPvI() {
+    let {ctx, w, h} = setupCanvas('cvs-pvi');
+    const pad = {t: 20, r: 20, b: 35, l: 50};
+    const totalSeconds = 200;
+    const durInput = document.getElementById('pvi-duration');
+    const magInput = document.getElementById('pvi-mag');
+    const durVal = document.getElementById('pvi-duration-val');
+    const magVal = document.getElementById('pvi-mag-val');
+    const runBtn = document.getElementById('pvi-run');
+
+    durInput.oninput = () => { durVal.textContent = durInput.value + 's'; };
+    magInput.oninput = () => { magVal.textContent = magInput.value + '%'; };
+
+    function simulate() {
+      const dur = +durInput.value;
+      const mag = +magInput.value / 100;
+      const dt = 1;
+      const skew = [], pRate = [], iRate = [];
+      let iAccum = 0;
+      const alphaI = 0.003;
+
+      for (let t = 0; t <= totalSeconds; t += dt) {
+        const skewStart = 30;
+        const s = (t >= skewStart && t < skewStart + dur) ? mag : 0;
+        skew.push(s);
+        pRate.push(s * 0.8);
+        if (s > 0) iAccum += alphaI * s * dt;
+        else if (iAccum > 0) iAccum = Math.max(0, iAccum - 0.00006 * dt);
+        iRate.push(iAccum);
+      }
+      return {skew, pRate, iRate};
+    }
+
+    function draw() {
+      // re-setup for resize
+      ({ctx, w, h} = setupCanvas('cvs-pvi'));
+      const data = simulate();
+      const n = data.skew.length;
+      const maxY = Math.max(0.01, ...data.skew, ...data.pRate, ...data.iRate) * 1.2;
+      const pw = w - pad.l - pad.r;
+      const ph = h - pad.t - pad.b;
+
+      ctx.clearRect(0, 0, w, h);
+      drawGrid(ctx, w, h, pad);
+      drawAxes(ctx, w, h, pad, 'Time (seconds)', 'Rate');
+
+      // x/y mappers
+      const xMap = i => pad.l + (i / n) * pw;
+      const yMap = v => pad.t + ph - (v / maxY) * ph;
+
+      // Skew (filled)
+      const skewPts = data.skew.map((v, i) => [xMap(i), yMap(v)]);
+      fillArea(ctx, skewPts, h - pad.b, 'rgba(255,107,53,0.08)');
+      drawLine(ctx, skewPts, 'rgba(255,107,53,0.6)', 1.5);
+
+      // P Rate
+      const pPts = data.pRate.map((v, i) => [xMap(i), yMap(v)]);
+      drawLine(ctx, pPts, '#00d4ff', 2.5);
+
+      // I Rate
+      const iPts = data.iRate.map((v, i) => [xMap(i), yMap(v)]);
+      fillArea(ctx, iPts, h - pad.b, 'rgba(0,255,136,0.06)');
+      drawLine(ctx, iPts, '#00ff88', 2.5);
+
+      // Labels
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.textAlign = 'left';
+      ctx.fillText('0', pad.l - 18, h - pad.b + 3);
+      ctx.fillText((maxY * 100).toFixed(0) + '%', pad.l - 40, pad.t + 10);
+      ctx.textAlign = 'center';
+      const dur = +document.getElementById('pvi-duration').value;
+      ctx.fillStyle = 'rgba(255,107,53,0.5)';
+      const xStart = xMap(30);
+      const xEnd = xMap(30 + dur);
+      ctx.fillText('skew active', (xStart + xEnd) / 2, pad.t + 14);
+
+      // Annotation: I-controller memory
+      const peakI = Math.max(...data.iRate);
+      const peakIdx = data.iRate.indexOf(peakI);
+      if (peakI > 0.005) {
+        ctx.fillStyle = 'rgba(0,255,136,0.5)';
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('"Memory" — rate persists', xMap(peakIdx) + 8, yMap(peakI) - 6);
+      }
+    }
+
+    draw();
+    runBtn.addEventListener('click', draw);
+    window.addEventListener('resize', draw);
+  })();
+
+  /* ============================
+     VIZ 2: Zone State Machine
+     ============================ */
+  (function initZone() {
+    const slider = document.getElementById('zone-slider');
+    const sliderVal = document.getElementById('zone-slider-val');
+    const tsInput = document.getElementById('zone-ts');
+    const tdInput = document.getElementById('zone-td');
+    const tsVal = document.getElementById('zone-ts-val');
+    const tdVal = document.getElementById('zone-td-val');
+    const formulaEl = document.getElementById('zone-formula');
+    const explainEl = document.getElementById('zone-explain');
+    const indicator = document.getElementById('zone-indicator');
+    const phiLabel = document.getElementById('zone-phi-label');
+    const zoneDecel = document.getElementById('zone-decel');
+    const zoneHyst = document.getElementById('zone-hyst');
+    const zoneAccel = document.getElementById('zone-accel');
+
+    function update() {
+      const phi = +slider.value;
+      const ts = +tsInput.value;
+      const td = +tdInput.value;
+      sliderVal.textContent = phi + '%';
+      tsVal.textContent = ts + '%';
+      tdVal.textContent = td + '%';
+
+      // Update zone bar proportions
+      const total = Math.max(ts + 10, 40);
+      zoneDecel.style.flex = td;
+      zoneHyst.style.flex = Math.max(0, ts - td);
+      zoneAccel.style.flex = total - ts;
+
+      // Pointer position
+      const pct = Math.min(phi / total * 100, 98);
+      indicator.style.left = pct + '%';
+      phiLabel.textContent = '\u03D5 = ' + phi + '%';
+
+      // Remove active classes
+      zoneDecel.classList.remove('active-zone');
+      zoneHyst.classList.remove('active-zone');
+      zoneAccel.classList.remove('active-zone');
+
+      if (phi >= ts) {
+        zoneAccel.classList.add('active-zone');
+        formulaEl.innerHTML = '';
+        if (typeof katex !== 'undefined') {
+          katex.render('v_{t+1} = v_t + \\alpha_{\\text{inc}} \\cdot \\phi \\cdot \\Delta t', formulaEl, {displayMode: true, throwOnError: false});
+        }
+        explainEl.innerHTML = 'The funding rate is <strong>accelerating</strong> because the imbalance exceeds the stable threshold.';
+      } else if (phi >= td) {
+        zoneHyst.classList.add('active-zone');
+        formulaEl.innerHTML = '';
+        if (typeof katex !== 'undefined') {
+          katex.render('v_{t+1} = v_t \\quad \\text{(no change)}', formulaEl, {displayMode: true, throwOnError: false});
+        }
+        explainEl.innerHTML = 'The funding rate is <strong>frozen</strong> (Hysteresis). The skew is moderate — not enough to accelerate, too high to decelerate.';
+      } else {
+        zoneDecel.classList.add('active-zone');
+        formulaEl.innerHTML = '';
+        if (typeof katex !== 'undefined') {
+          katex.render('v_{t+1} = v_t - \\alpha_{\\text{dec}} \\cdot \\Delta t', formulaEl, {displayMode: true, throwOnError: false});
+        }
+        explainEl.innerHTML = 'The funding rate is <strong>decelerating</strong> — slowly decreasing. Note: deceleration is constant, not proportional to skew.';
+      }
+    }
+
+    slider.oninput = update;
+    tsInput.oninput = update;
+    tdInput.oninput = update;
+    // Defer initial update so KaTeX is loaded
+    setTimeout(update, 300);
+  })();
+
+  /* ============================
+     VIZ 3: Cumulative Indexing Animation
+     ============================ */
+  (function initCumulative() {
+    let {ctx, w, h} = setupCanvas('cvs-cumulative');
+    const pad = {t: 25, r: 30, b: 35, l: 55};
+    const runBtn = document.getElementById('cum-run');
+    const resetBtn = document.getElementById('cum-reset');
+    let animId = null;
+    let frame = 0;
+    const totalFrames = 300;
+    const openFrame = 60;
+    const closeFrame = 220;
+
+    function drawFrame(f) {
+      ({ctx, w, h} = setupCanvas('cvs-cumulative'));
+      const pw = w - pad.l - pad.r;
+      const ph = h - pad.t - pad.b;
+
+      ctx.clearRect(0, 0, w, h);
+      drawGrid(ctx, w, h, pad);
+      drawAxes(ctx, w, h, pad, 'Time', 'Cumulative Factor');
+
+      // Generate cumulative funding curve
+      const pts = [];
+      let cum = 0;
+      const rateBase = 0.0008;
+      for (let i = 0; i <= Math.min(f, totalFrames); i++) {
+        const rate = rateBase * (1 + 0.5 * Math.sin(i / 30));
+        cum += rate;
+        const x = pad.l + (i / totalFrames) * pw;
+        const y = pad.t + ph - (cum / (rateBase * totalFrames * 1.8)) * ph;
+        pts.push([x, y]);
+      }
+
+      // Draw cumulative line
+      drawLine(ctx, pts, 'rgba(0,212,255,0.7)', 2.5);
+      fillArea(ctx, pts, h - pad.b, 'rgba(0,212,255,0.04)');
+
+      // Open position marker
+      if (f >= openFrame) {
+        const openX = pad.l + (openFrame / totalFrames) * pw;
+        let openCum = 0;
+        for (let i = 0; i <= openFrame; i++) openCum += rateBase * (1 + 0.5 * Math.sin(i / 30));
+        const openY = pad.t + ph - (openCum / (rateBase * totalFrames * 1.8)) * ph;
+
+        ctx.strokeStyle = 'rgba(0,255,136,0.6)';
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(openX, pad.t); ctx.lineTo(openX, h - pad.b); ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Snapshot dot
+        ctx.fillStyle = '#00ff88';
+        ctx.beginPath(); ctx.arc(openX, openY, 5, 0, Math.PI * 2); ctx.fill();
+
+        // Label
+        ctx.fillStyle = 'rgba(0,255,136,0.8)';
+        ctx.font = 'bold 10px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('OPEN (snapshot)', openX, pad.t - 6);
+
+        // Horizontal line from snapshot
+        ctx.strokeStyle = 'rgba(0,255,136,0.2)';
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath(); ctx.moveTo(openX, openY); ctx.lineTo(w - pad.r, openY); ctx.stroke();
+        ctx.setLineDash([]);
+
+        // C_user label
+        ctx.fillStyle = 'rgba(0,255,136,0.5)';
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('C_user = ' + openCum.toFixed(3), openX + 8, openY - 8);
+      }
+
+      // Close position marker
+      if (f >= closeFrame) {
+        const closeX = pad.l + (closeFrame / totalFrames) * pw;
+        let closeCum = 0;
+        for (let i = 0; i <= closeFrame; i++) closeCum += rateBase * (1 + 0.5 * Math.sin(i / 30));
+        const closeY = pad.t + ph - (closeCum / (rateBase * totalFrames * 1.8)) * ph;
+
+        ctx.strokeStyle = 'rgba(255,107,53,0.6)';
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(closeX, pad.t); ctx.lineTo(closeX, h - pad.b); ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = '#ff6b35';
+        ctx.beginPath(); ctx.arc(closeX, closeY, 5, 0, Math.PI * 2); ctx.fill();
+
+        ctx.fillStyle = 'rgba(255,107,53,0.8)';
+        ctx.font = 'bold 10px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('CLOSE', closeX, pad.t - 6);
+
+        ctx.fillStyle = 'rgba(255,107,53,0.5)';
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText('C_global = ' + closeCum.toFixed(3), closeX + 8, closeY - 8);
+
+        // Shade the fee region
+        let openCum = 0;
+        for (let i = 0; i <= openFrame; i++) openCum += rateBase * (1 + 0.5 * Math.sin(i / 30));
+        const openX = pad.l + (openFrame / totalFrames) * pw;
+        const openY = pad.t + ph - (openCum / (rateBase * totalFrames * 1.8)) * ph;
+
+        // Draw shaded area between open and close on the curve
+        const feePts = [];
+        for (let i = openFrame; i <= closeFrame; i++) {
+          let c = 0;
+          for (let j = 0; j <= i; j++) c += rateBase * (1 + 0.5 * Math.sin(j / 30));
+          const x = pad.l + (i / totalFrames) * pw;
+          const y = pad.t + ph - (c / (rateBase * totalFrames * 1.8)) * ph;
+          feePts.push([x, y]);
+        }
+        // Fill between curve and openY horizontal
+        ctx.fillStyle = 'rgba(168,85,247,0.12)';
+        ctx.beginPath();
+        ctx.moveTo(openX, openY);
+        for (const p of feePts) ctx.lineTo(p[0], p[1]);
+        ctx.lineTo(feePts[feePts.length - 1][0], openY);
+        ctx.closePath();
+        ctx.fill();
+
+        // Fee label
+        const fee = closeCum - openCum;
+        ctx.fillStyle = 'rgba(168,85,247,0.8)';
+        ctx.font = 'bold 11px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Fee = C_global - C_user = ' + fee.toFixed(3), (openX + closeX) / 2, (openY + closeY) / 2 - 10);
+      }
+    }
+
+    function animate() {
+      if (frame > totalFrames) { frame = totalFrames; return; }
+      drawFrame(frame);
+      frame += 2;
+      animId = requestAnimationFrame(animate);
+    }
+
+    drawFrame(0);
+    runBtn.addEventListener('click', () => {
+      if (animId) cancelAnimationFrame(animId);
+      frame = 0;
+      animate();
+    });
+    resetBtn.addEventListener('click', () => {
+      if (animId) cancelAnimationFrame(animId);
+      frame = 0;
+      drawFrame(0);
+    });
+  })();
+
+  /* ============================
+     VIZ 4: Sticky Rate / Asymmetry
+     ============================ */
+  (function initSticky() {
+    let {ctx, w, h} = setupCanvas('cvs-sticky');
+    const pad = {t: 25, r: 20, b: 35, l: 55};
+    const ratioInput = document.getElementById('sticky-ratio');
+    const tsInput = document.getElementById('sticky-ts');
+    const tdInput = document.getElementById('sticky-td');
+    const ratioVal = document.getElementById('sticky-ratio-val');
+    const tsValEl = document.getElementById('sticky-ts-val');
+    const tdValEl = document.getElementById('sticky-td-val');
+    const runBtn = document.getElementById('sticky-run');
+
+    ratioInput.oninput = () => { ratioVal.textContent = ratioInput.value + 'x'; };
+    tsInput.oninput = () => { tsValEl.textContent = tsInput.value + '%'; };
+    tdInput.oninput = () => { tdValEl.textContent = tdInput.value + '%'; };
+
+    function simulate() {
+      const ratio = +ratioInput.value;
+      const ts = +tsInput.value / 100;
+      const td = +tdInput.value / 100;
+      const alphaInc = 0.0005;
+      const alphaDec = alphaInc / ratio;
+
+      const totalSteps = 500;
+      const skewHistory = [];
+      const rateHistory = [];
+      let v = 0;
+      const dt = 1;
+
+      for (let t = 0; t < totalSteps; t++) {
+        let skew;
+        if (t < 30) skew = 0.02;
+        else if (t < 100) skew = 0.02 + (0.20 - 0.02) * ((t - 30) / 70); // ramp to 20%
+        else if (t < 150) skew = 0.20; // hold at 20%
+        else if (t < 180) skew = 0.20 - (0.20 - 0.06) * ((t - 150) / 30); // arbs bring to 6%
+        else if (t < 320) skew = 0.06; // stuck at 6% (hysteresis)
+        else if (t < 360) skew = 0.06 - (0.06 - 0.03) * ((t - 320) / 40); // finally drops
+        else skew = 0.03;
+
+        skewHistory.push(skew);
+
+        // Apply zone logic
+        if (skew >= ts) {
+          v += alphaInc * skew * dt;
+        } else if (skew >= td) {
+          // hysteresis — no change
+        } else {
+          v = Math.max(0, v - alphaDec * dt);
+        }
+        rateHistory.push(v);
+      }
+      return {skewHistory, rateHistory, ts, td};
+    }
+
+    function draw() {
+      ({ctx, w, h} = setupCanvas('cvs-sticky'));
+      const data = simulate();
+      const n = data.skewHistory.length;
+      const maxSkew = 0.25;
+      const maxRate = Math.max(0.001, ...data.rateHistory) * 1.3;
+      const pw = w - pad.l - pad.r;
+      const ph = h - pad.t - pad.b;
+
+      ctx.clearRect(0, 0, w, h);
+      drawGrid(ctx, w, h, pad);
+      drawAxes(ctx, w, h, pad, 'Time (steps)', '');
+
+      const xMap = i => pad.l + (i / n) * pw;
+      const yMapSkew = v => pad.t + ph - (v / maxSkew) * ph;
+      const yMapRate = v => pad.t + ph - (v / maxRate) * ph;
+
+      // Draw hysteresis zone background
+      const tsY = yMapSkew(data.ts);
+      const tdY = yMapSkew(data.td);
+      ctx.fillStyle = 'rgba(168,85,247,0.06)';
+      ctx.fillRect(pad.l, tsY, pw, tdY - tsY);
+      ctx.strokeStyle = 'rgba(168,85,247,0.2)';
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad.l, tsY); ctx.lineTo(w - pad.r, tsY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pad.l, tdY); ctx.lineTo(w - pad.r, tdY); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Labels for thresholds
+      ctx.fillStyle = 'rgba(168,85,247,0.5)';
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('Ts = ' + (data.ts * 100).toFixed(0) + '%', w - pad.r - 4, tsY - 4);
+      ctx.fillText('Td = ' + (data.td * 100).toFixed(0) + '%', w - pad.r - 4, tdY - 4);
+
+      // Skew line
+      const skewPts = data.skewHistory.map((v, i) => [xMap(i), yMapSkew(v)]);
+      fillArea(ctx, skewPts, h - pad.b, 'rgba(255,107,53,0.06)');
+      drawLine(ctx, skewPts, '#ff6b35', 2);
+
+      // Rate line
+      const ratePts = data.rateHistory.map((v, i) => [xMap(i), yMapRate(v)]);
+      fillArea(ctx, ratePts, h - pad.b, 'rgba(0,212,255,0.05)');
+      drawLine(ctx, ratePts, '#00d4ff', 2.5);
+
+      // Annotations
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.fillStyle = 'rgba(0,212,255,0.6)';
+      ctx.textAlign = 'left';
+      const peakRate = Math.max(...data.rateHistory);
+      const peakIdx = data.rateHistory.indexOf(peakRate);
+      // Label the sticky region
+      ctx.fillText('"Sticky" — rate frozen', xMap(200), yMapRate(peakRate) + 14);
+
+      // Y-axis labels
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.textAlign = 'right';
+      ctx.fillText('0', pad.l - 4, h - pad.b + 3);
+      ctx.fillText((maxSkew * 100).toFixed(0) + '% skew', pad.l - 4, pad.t + 10);
+    }
+
+    draw();
+    runBtn.addEventListener('click', draw);
+    window.addEventListener('resize', draw);
+  })();
+
+  /* ============================
+     VIZ 5: Cost Curve (Linear vs Quadratic)
+     ============================ */
+  (function initCost() {
+    let {ctx, w, h} = setupCanvas('cvs-cost');
+    const pad = {t: 25, r: 20, b: 35, l: 55};
+    const timeInput = document.getElementById('cost-time');
+    const rateInput = document.getElementById('cost-rate');
+    const timeVal = document.getElementById('cost-time-val');
+    const rateVal = document.getElementById('cost-rate-val');
+
+    timeInput.oninput = draw;
+    rateInput.oninput = draw;
+
+    function draw() {
+      ({ctx, w, h} = setupCanvas('cvs-cost'));
+      const T = +timeInput.value;
+      const k = +rateInput.value;
+      timeVal.textContent = T + 'h';
+      rateVal.textContent = k;
+
+      const pw = w - pad.l - pad.r;
+      const ph = h - pad.t - pad.b;
+      const maxCostLinear = k * T;
+      const maxCostQuad = k * T * T;
+      const maxY = maxCostQuad * 1.15;
+
+      ctx.clearRect(0, 0, w, h);
+      drawGrid(ctx, w, h, pad);
+      drawAxes(ctx, w, h, pad, 'Time (hours)', 'Cumulative Cost');
+
+      const xMap = t => pad.l + (t / T) * pw;
+      const yMap = c => pad.t + ph - (c / maxY) * ph;
+
+      const n = 200;
+      const linPts = [];
+      const quadPts = [];
+      for (let i = 0; i <= n; i++) {
+        const t = (i / n) * T;
+        linPts.push([xMap(t), yMap(k * t)]);
+        quadPts.push([xMap(t), yMap(k * t * t)]);
+      }
+
+      // Fill under quadratic
+      fillArea(ctx, quadPts, h - pad.b, 'rgba(255,107,53,0.06)');
+      drawLine(ctx, quadPts, '#ff6b35', 2.5);
+
+      // Fill under linear
+      fillArea(ctx, linPts, h - pad.b, 'rgba(0,212,255,0.05)');
+      drawLine(ctx, linPts, '#00d4ff', 2.5);
+
+      // Labels
+      ctx.font = 'bold 11px -apple-system, sans-serif';
+
+      // Linear label
+      const linLabelX = xMap(T * 0.75);
+      const linLabelY = yMap(k * T * 0.75);
+      ctx.fillStyle = 'rgba(0,212,255,0.7)';
+      ctx.textAlign = 'left';
+      ctx.fillText('P-Controller: Cost = k·t', linLabelX + 5, linLabelY - 10);
+
+      // Quadratic label
+      const qLabelX = xMap(T * 0.5);
+      const qLabelY = yMap(k * (T * 0.5) * (T * 0.5));
+      ctx.fillStyle = 'rgba(255,107,53,0.7)';
+      ctx.fillText('I-Controller: Cost = k·t²', qLabelX + 5, qLabelY - 10);
+
+      // End-point comparison
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(0,212,255,0.5)';
+      ctx.fillText('Linear: ' + maxCostLinear.toFixed(0), w - pad.r - 5, yMap(maxCostLinear) - 4);
+      ctx.fillStyle = 'rgba(255,107,53,0.5)';
+      ctx.fillText('Quadratic: ' + maxCostQuad.toFixed(0), w - pad.r - 5, yMap(maxCostQuad) + 14);
+
+      // Ratio callout
+      if (T > 1) {
+        const ratioText = `At ${T}h: Quadratic is ${(T).toFixed(0)}x more expensive`;
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.font = 'bold 11px -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(ratioText, (pad.l + w - pad.r) / 2, pad.t + 14);
+      }
+
+      // Y-axis labels
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('0', pad.l - 4, h - pad.b + 3);
+    }
+
+    draw();
+    window.addEventListener('resize', draw);
+  })();
+
+  /* ============================
+     VIZ 6: Oscillation Risk
+     ============================ */
+  (function initOscillation() {
+    let {ctx, w, h} = setupCanvas('cvs-oscillation');
+    const pad = {t: 20, r: 20, b: 35, l: 50};
+    const aggrInput = document.getElementById('osc-aggr');
+    const dampInput = document.getElementById('osc-damp');
+    const aggrVal = document.getElementById('osc-aggr-val');
+    const dampVal = document.getElementById('osc-damp-val');
+    const runBtn = document.getElementById('osc-run');
+
+    aggrInput.oninput = () => { aggrVal.textContent = aggrInput.value; };
+    dampInput.oninput = () => { dampVal.textContent = dampInput.value + '%'; };
+
+    function simulate() {
+      const aggr = +aggrInput.value;
+      const damp = +dampInput.value / 100;
+      const n = 400;
+      const skew = [];
+      const rate = [];
+      let s = 0.15; // initial skew
+      let v = 0;
+      const alphaInc = 0.0002 * aggr;
+      const alphaDec = alphaInc / 30;
+
+      for (let t = 0; t < n; t++) {
+        skew.push(s);
+
+        // Zone logic
+        if (Math.abs(s) >= damp) {
+          v += alphaInc * s;
+        } else if (Math.abs(s) >= damp * 0.5) {
+          // hysteresis
+        } else {
+          if (v > 0) v = Math.max(0, v - alphaDec);
+          else if (v < 0) v = Math.min(0, v + alphaDec);
+        }
+        rate.push(v);
+
+        // Traders react to funding rate — creates feedback loop
+        const reactStrength = 0.003 * aggr;
+        s -= v * reactStrength;
+        // Add small noise
+        s += (Math.random() - 0.5) * 0.002;
+        // Clamp
+        s = Math.max(-0.3, Math.min(0.3, s));
+      }
+      return {skew, rate};
+    }
+
+    function draw() {
+      ({ctx, w, h} = setupCanvas('cvs-oscillation'));
+      const data = simulate();
+      const n = data.skew.length;
+      const maxS = 0.35;
+      const maxR = Math.max(0.001, ...data.rate.map(Math.abs)) * 1.3;
+      const pw = w - pad.l - pad.r;
+      const ph = h - pad.t - pad.b;
+      const midY = pad.t + ph / 2;
+
+      ctx.clearRect(0, 0, w, h);
+      drawGrid(ctx, w, h, pad);
+
+      // Zero line
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad.l, midY); ctx.lineTo(w - pad.r, midY); ctx.stroke();
+
+      const xMap = i => pad.l + (i / n) * pw;
+      const yMapS = v => midY - (v / maxS) * (ph / 2);
+      const yMapR = v => midY - (v / maxR) * (ph / 2);
+
+      // Skew
+      const sPts = data.skew.map((v, i) => [xMap(i), yMapS(v)]);
+      drawLine(ctx, sPts, '#ff6b35', 1.5);
+
+      // Rate
+      const rPts = data.rate.map((v, i) => [xMap(i), yMapR(v)]);
+      drawLine(ctx, rPts, '#00d4ff', 2);
+
+      // Labels
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Time', (pad.l + w - pad.r) / 2, h - 4);
+      ctx.textAlign = 'right';
+      ctx.fillText('0', pad.l - 6, midY + 3);
+    }
+
+    draw();
+    runBtn.addEventListener('click', draw);
+    window.addEventListener('resize', draw);
+  })();
+
+}); // end DOMContentLoaded
+</script>
+</body>
+</html>
